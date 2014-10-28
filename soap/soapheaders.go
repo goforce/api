@@ -18,6 +18,25 @@ func (h *SessionHeader) String() string {
 		`</tns:sessionId></tns:SessionHeader>`
 }
 
+type CallOptions struct {
+	Client           string
+	DefaultNamespace string
+}
+
+func (h *CallOptions) String() string {
+	if len(h.Client) > 0 || len(h.DefaultNamespace) > 0 {
+		s := `<tns:CallOptions>`
+		if len(h.Client) > 0 {
+			s += `<tns:client>` + h.Client + `</tns:client>`
+		}
+		if len(h.DefaultNamespace) > 0 {
+			s += `<tns:defaultNamespace>` + h.DefaultNamespace + `</tns:defaultNamespace>`
+		}
+		s += `</tns:CallOptions>`
+	}
+	return ""
+}
+
 type AllOrNoneHeader struct {
 	AllOrNone bool
 }

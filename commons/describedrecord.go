@@ -146,7 +146,7 @@ func (rec *describedRecord) Set(name string, value interface{}) (interface{}, er
 					rec.fields[this] = describedField{value: value, describe: fd}
 					return value, nil
 				} else if s, ok := value.(string); ok {
-					if d, err := time.Parse("2006-01-02T15:04:05.999Z0700", s); err == nil {
+					if d, err := time.Parse("2006-01-02T15:04:05.999Z07:00", s); err == nil {
 						rec.fields[this] = describedField{value: d, describe: fd}
 						return value, nil
 					} else {

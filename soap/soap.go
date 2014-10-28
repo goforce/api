@@ -14,7 +14,7 @@ import (
 var _ = fmt.Print
 
 const (
-	API_VERSION       string = "31.0"
+	API_VERSION       string = "32.0"
 	PRODUCTION        string = "https://login.salesforce.com"
 	SANDBOX           string = "https://test.salesforce.com"
 	SOAP_API_SERVICES        = "/services/Soap/u/" + API_VERSION

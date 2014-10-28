@@ -38,7 +38,7 @@ func String(value interface{}) string {
 		if t.Location().String() == "DATE" {
 			return t.Format("2006-01-02")
 		} else {
-			return t.Format("2006-01-02T15:04:05.999Z0700")
+			return t.Format("2006-01-02T15:04:05.000Z07:00")
 		}
 	default:
 		panic(fmt.Sprint("unsupported data type: ", reflect.TypeOf(value), " / ", value))
