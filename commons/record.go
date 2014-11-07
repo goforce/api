@@ -46,6 +46,9 @@ func MustString(value interface{}, ok bool) string {
 	if !ok {
 		panic("no such field")
 	}
+	if value == nil {
+		return ""
+	}
 	if v, ok := value.(string); ok {
 		return v
 	}

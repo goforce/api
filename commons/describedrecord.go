@@ -108,7 +108,10 @@ func (rec *describedRecord) Set(name string, value interface{}) (interface{}, er
 					return nil, errors.New(fmt.Sprint("value passed for:", this, ": not a boolean"))
 				}
 			case "currency", "int", "double", "percent":
-				if _, ok := value.(*big.Rat); ok || value == nil {
+				if IsBlank(value) {
+					rec.fields[this] = describedField{value: nil, describe: fd}
+					return value, nil
+				} else if _, ok := value.(*big.Rat); ok {
 					rec.fields[this] = describedField{value: value, describe: fd}
 					return value, nil
 				} else if s, ok := value.(string); ok {

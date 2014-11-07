@@ -106,6 +106,7 @@ func (co *Connection) Upsert(records []commons.Record, externalId string, header
 func writeRecords(buf *bytes.Buffer, records []commons.Record, externalId string) error {
 	var fieldsToWrite bytes.Buffer
 	var fieldsToNull bytes.Buffer
+	var nestedFieldsToWrite bytes.Buffer
 	for _, rec := range records {
 		fieldsToNull.Reset()
 		fieldsToWrite.Reset()
@@ -121,24 +122,27 @@ func writeRecords(buf *bytes.Buffer, records []commons.Record, externalId string
 					// do nothing, just skip nested subselects
 				case commons.Record:
 					nested := v.(commons.Record)
-					fieldsToWrite.WriteByte('<')
-					fieldsToWrite.WriteString(f)
-					fieldsToWrite.WriteByte('>')
-					fieldsToWrite.WriteString(`<type>`)
-					fieldsToWrite.WriteString(nested.SObjectType())
-					fieldsToWrite.WriteString(`</type>`)
+					nestedFieldsToWrite.Reset()
 					for _, nf := range nested.Fields() {
 						v := commons.Must(nested.Get(nf))
 						if !commons.IsBlank(v) {
-							fieldsToWrite.WriteString(strings.Join([]string{`<`, nf, `>`, commons.String(v), `</`, nf, `>`}, ""))
+							writeValue(&nestedFieldsToWrite, nf, v)
 						}
 					}
-					fieldsToWrite.WriteString(`</`)
-					fieldsToWrite.WriteString(f)
-					fieldsToWrite.WriteByte('>')
+					if nestedFieldsToWrite.Len() > 0 {
+						fieldsToWrite.WriteByte('<')
+						fieldsToWrite.WriteString(f)
+						fieldsToWrite.WriteByte('>')
+						fieldsToWrite.WriteString(`<type>`)
+						fieldsToWrite.WriteString(nested.SObjectType())
+						fieldsToWrite.WriteString(`</type>`)
+						fieldsToWrite.Write(nestedFieldsToWrite.Bytes())
+						fieldsToWrite.WriteString(`</`)
+						fieldsToWrite.WriteString(f)
+						fieldsToWrite.WriteByte('>')
+					}
 				default:
-					v := commons.Must(rec.Get(f))
-					fieldsToWrite.WriteString(strings.Join([]string{`<`, f, `>`, commons.String(v), `</`, f, `>`}, ""))
+					writeValue(&fieldsToWrite, f, commons.Must(rec.Get(f)))
 				}
 			}
 		}
@@ -150,4 +154,17 @@ func writeRecords(buf *bytes.Buffer, records []commons.Record, externalId string
 		buf.WriteString(`</tns:sObjects>`)
 	}
 	return nil
+}
+
+func writeValue(buf *bytes.Buffer, tag string, value interface{}) {
+	buf.WriteByte('<')
+	buf.WriteString(tag)
+	buf.WriteByte('>')
+	err := xml.EscapeText(buf, []byte(commons.String(value)))
+	if err != nil {
+		panic(err)
+	}
+	buf.WriteString("</")
+	buf.WriteString(tag)
+	buf.WriteByte('>')
 }
