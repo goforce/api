@@ -10,6 +10,7 @@ import (
 
 // timezone called DATE is used to distinguish DATE fields
 var dateLocation = time.FixedZone("DATE", 0)
+var timeLocation = time.FixedZone("TIME", 0)
 
 type describedField struct {
 	value         interface{}
@@ -141,7 +142,26 @@ func (rec *describedRecord) Set(name string, value interface{}) (interface{}, er
 				} else {
 					return nil, errors.New(fmt.Sprint("value passed for:", this, ": not a date:", value))
 				}
-			case "datetime", "time":
+			case "time":
+				if IsBlank(value) {
+					rec.fields[this] = describedField{value: nil, describe: fd}
+					return value, nil
+				} else if _, ok := value.(time.Time); ok {
+					t := value.(time.Time).In(timeLocation)
+					rec.fields[this] = describedField{value: t, describe: fd}
+					return value, nil
+				} else if s, ok := value.(string); ok {
+					if t, err := time.Parse("15:04:05.999Z07:00", s); err == nil {
+						t = t.In(timeLocation)
+						rec.fields[this] = describedField{value: t, describe: fd}
+						return value, nil
+					} else {
+						return nil, errors.New(fmt.Sprint("failed to convert to time for:", this, " value:", s))
+					}
+				} else {
+					return nil, errors.New(fmt.Sprint("value passed for:", this, ": not a datetime:", value))
+				}
+			case "datetime":
 				if IsBlank(value) {
 					rec.fields[this] = describedField{value: nil, describe: fd}
 					return value, nil

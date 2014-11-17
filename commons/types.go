@@ -32,11 +32,13 @@ func String(value interface{}) string {
 	case string:
 		return value.(string)
 	case *big.Rat:
-		return strings.TrimRight(value.(*big.Rat).FloatString(20), "0")
+		return strings.TrimSuffix(strings.TrimRight(value.(*big.Rat).FloatString(20), "0"), ".")
 	case time.Time:
 		t := value.(time.Time)
 		if t.Location().String() == "DATE" {
 			return t.Format("2006-01-02")
+		} else if t.Location().String() == "TIME" {
+			return t.Format("15:04:05.000Z07:00")
 		} else {
 			return t.Format("2006-01-02T15:04:05.000Z07:00")
 		}
