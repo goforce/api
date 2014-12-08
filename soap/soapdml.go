@@ -3,6 +3,7 @@ package soap
 import (
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"github.com/goforce/api/commons"
 	"github.com/goforce/log"
@@ -32,7 +33,9 @@ func (co *Connection) Insert(records []commons.Record, headers ...SoapHeader) (r
 	req.WriteString(`</tns:create>`)
 	_ = log.IsOn(commons.MESSAGES) && log.Println(commons.MESSAGES, string(req.Bytes()))
 	response, err := co.Post(req.Bytes(), headers...)
-	defer response.Close()
+	if response != nil {
+		defer response.Close()
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +62,9 @@ func (co *Connection) Update(records []commons.Record, headers ...SoapHeader) (r
 	req.WriteString(`</tns:update>`)
 	_ = log.IsOn(commons.MESSAGES) && log.Println(commons.MESSAGES, string(req.Bytes()))
 	response, err := co.Post(req.Bytes(), headers...)
-	defer response.Close()
+	if response != nil {
+		defer response.Close()
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -87,10 +92,12 @@ func (co *Connection) Upsert(records []commons.Record, externalId string, header
 	req.WriteString(`</tns:upsert>`)
 	_ = log.IsOn(commons.MESSAGES) && log.Println(commons.MESSAGES, string(req.Bytes()))
 	response, err := co.Post(req.Bytes(), headers...)
+	if response != nil {
+		defer response.Close()
+	}
 	if err != nil {
 		return nil, err
 	}
-	defer response.Close()
 	var upsertResponse struct {
 		Results []DmlResult `xml:"Body>upsertResponse>result"`
 	}
@@ -101,6 +108,38 @@ func (co *Connection) Upsert(records []commons.Record, externalId string, header
 		}
 	}
 	return upsertResponse.Results, nil
+}
+
+func (co *Connection) Delete(records []commons.Record, headers ...SoapHeader) (result []DmlResult, err error) {
+	_ = log.IsOn(commons.CALLS) && log.Println(commons.CALLS, "delete ", len(records), " records")
+	var req bytes.Buffer
+	req.WriteString(`<tns:delete>`)
+	for _, rec := range records {
+		if id, ok := rec.Get("Id"); ok {
+			writeValue(&req, "tns:ids", id)
+		} else {
+			return nil, errors.New("Only records with Id field specified can be deleted.")
+		}
+	}
+	req.WriteString(`</tns:delete>`)
+	_ = log.IsOn(commons.MESSAGES) && log.Println(commons.MESSAGES, string(req.Bytes()))
+	response, err := co.Post(req.Bytes(), headers...)
+	if response != nil {
+		defer response.Close()
+	}
+	if err != nil {
+		return nil, err
+	}
+	var deleteResponse struct {
+		Results []DmlResult `xml:"Body>deleteResponse>result"`
+	}
+	xml.NewDecoder(response).Decode(&deleteResponse)
+	for i, _ := range deleteResponse.Results {
+		if deleteResponse.Results[i].Success && deleteResponse.Results[i].Created {
+			records[i].Set("Id", deleteResponse.Results[i].Id)
+		}
+	}
+	return deleteResponse.Results, nil
 }
 
 func writeRecords(buf *bytes.Buffer, records []commons.Record, externalId string) error {
