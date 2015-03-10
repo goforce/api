@@ -1,21 +1,12 @@
 package soap
 
 import (
+	"github.com/goforce/api/soap/core"
 	"strconv"
 )
 
 type SoapHeader interface {
-	String() string
-}
-
-type SessionHeader struct {
-	SessionId string
-}
-
-func (h *SessionHeader) String() string {
-	return `<tns:SessionHeader><tns:sessionId>` +
-		h.SessionId +
-		`</tns:sessionId></tns:SessionHeader>`
+	xe() *core.XE
 }
 
 type CallOptions struct {
@@ -23,38 +14,34 @@ type CallOptions struct {
 	DefaultNamespace string
 }
 
-func (h *CallOptions) String() string {
-	if len(h.Client) > 0 || len(h.DefaultNamespace) > 0 {
-		s := `<tns:CallOptions>`
-		if len(h.Client) > 0 {
-			s += `<tns:client>` + h.Client + `</tns:client>`
-		}
-		if len(h.DefaultNamespace) > 0 {
-			s += `<tns:defaultNamespace>` + h.DefaultNamespace + `</tns:defaultNamespace>`
-		}
-		s += `</tns:CallOptions>`
+func (h *CallOptions) xe() *core.XE {
+	if len(h.Client) == 0 && len(h.DefaultNamespace) == 0 {
+		return nil
 	}
-	return ""
+	x := make([]XE, 0, 2)
+	if len(h.Client) > 0 {
+		x = append(x, XE{"tns:client", h.Client})
+	}
+	if len(h.DefaultNamespace) > 0 {
+		x = append(x, XE{"tns:defaultNamespace", h.DefaultNamespace})
+	}
+	return &core.XE{"tns:CallOptions", x}
 }
 
 type AllOrNoneHeader struct {
 	AllOrNone bool
 }
 
-func (h *AllOrNoneHeader) String() string {
-	return `<tns:AllOrNoneHeader><tns:allOrNone>` +
-		strconv.FormatBool(h.AllOrNone) +
-		`</tns:allOrNone></tns:AllOrNoneHeader>`
+func (h *AllOrNoneHeader) xe() *core.XE {
+	return &core.XE{"tns:AllOrNoneHeader", XE{"tns:allOrNone", strconv.FormatBool(h.AllOrNone)}}
 }
 
 type AllowFieldTruncationHeader struct {
 	AllowFieldTruncation bool
 }
 
-func (h *AllowFieldTruncationHeader) String() string {
-	return `<tns:AllowFieldTruncationHeader><tns:allowFieldTruncation>` +
-		strconv.FormatBool(h.AllowFieldTruncation) +
-		`</tns:allowFieldTruncation></tns:AllowFieldTruncationHeader>`
+func (h *AllowFieldTruncationHeader) xe() *core.XE {
+	return &core.XE{"tns:AllowFieldTruncationHeader", XE{"tns:allowFieldTruncation", strconv.FormatBool(h.AllowFieldTruncation)}}
 }
 
 type AssignmentRuleHeader struct {
@@ -62,25 +49,26 @@ type AssignmentRuleHeader struct {
 	UseDefaultRule   *bool
 }
 
-func (h *AssignmentRuleHeader) String() string {
-	s := `<tns:AssignmentRuleHeader>`
-	if h.AssignmentRuleId != "" {
-		s = s + `<tns:assignmentRuleId>` + h.AssignmentRuleId + `</tns:assignmentRuleId>`
-	} else if h.UseDefaultRule != nil {
-		s = s + `<tns:useDefaultRule>` + strconv.FormatBool(*h.UseDefaultRule) + `</tns:useDefaultRule>`
+func (h *AssignmentRuleHeader) xe() *core.XE {
+	if len(h.AssignmentRuleId) == 0 && h.UseDefaultRule == nil {
+		return nil
 	}
-	s = s + `</tns:AssignmentRuleHeader>`
-	return s
+	x := make([]XE, 0, 2)
+	if len(h.AssignmentRuleId) > 0 {
+		x = append(x, XE{"tns:assignmentRuleId", h.AssignmentRuleId})
+	}
+	if h.UseDefaultRule != nil {
+		x = append(x, XE{"tns:useDefaultRule", strconv.FormatBool(*h.UseDefaultRule)})
+	}
+	return &core.XE{"tns:AssignmentRuleHeader", x}
 }
 
 type DisableFeedTrackingHeader struct {
 	DisableFeedTracking bool
 }
 
-func (h *DisableFeedTrackingHeader) String() string {
-	return `<tns:DisableFeedTrackingHeader><tns:disableFeedTracking>` +
-		strconv.FormatBool(h.DisableFeedTracking) +
-		`</tns:disableFeedTracking></tns:DisableFeedTrackingHeader>`
+func (h *DisableFeedTrackingHeader) xe() *core.XE {
+	return &core.XE{"tns:DisableFeedTrackingHeader", XE{"tns:disableFeedTracking", strconv.FormatBool(h.DisableFeedTracking)}}
 }
 
 type EmailHeader struct {
@@ -89,34 +77,28 @@ type EmailHeader struct {
 	TriggerUserEmail         bool
 }
 
-func (h *EmailHeader) String() string {
-	return `<tns:EmailHeader><tns:triggerAutoResponseEmail>` +
-		strconv.FormatBool(h.TriggerAutoResponseEmail) +
-		`</tns:triggerAutoResponseEmail><tns:triggerOtherEmail>` +
-		strconv.FormatBool(h.TriggerOtherEmail) +
-		`</tns:triggerOtherEmail><tns:triggerUserEmail>` +
-		strconv.FormatBool(h.TriggerUserEmail) +
-		`<tns:triggerUserEmail></tns:EmailHeader>`
+func (h *EmailHeader) xe() *core.XE {
+	x := make([]XE, 0, 3)
+	x = append(x, XE{"tns:triggerAutoResponseEmail", strconv.FormatBool(h.TriggerAutoResponseEmail)})
+	x = append(x, XE{"tns:triggerOtherEmail", strconv.FormatBool(h.TriggerOtherEmail)})
+	x = append(x, XE{"tns:triggerUserEmail", strconv.FormatBool(h.TriggerUserEmail)})
+	return &core.XE{"tns:EmailHeader", x}
 }
 
 type LocaleOptions struct {
-	language string
+	Language string
 }
 
-func (h *LocaleOptions) String() string {
-	return `<tns:LocaleOptions><tns:language>` +
-		h.language +
-		`</tns:language></tns:LocaleOptions>`
+func (h *LocaleOptions) xe() *core.XE {
+	return &core.XE{"tns:LocaleOptions", XE{"tns:language", h.Language}}
 }
 
 type MruHeader struct {
 	UpdateMru bool
 }
 
-func (h *MruHeader) String() string {
-	return `<tns:MruHeader><tns:updateMru>` +
-		strconv.FormatBool(h.UpdateMru) +
-		`</tns:updateMru></tns:MruHeader>`
+func (h *MruHeader) xe() *core.XE {
+	return &core.XE{"tns:MruHeader", XE{"tns:updateMru", strconv.FormatBool(h.UpdateMru)}}
 }
 
 type OwnerChangeOptions struct {
@@ -124,30 +106,25 @@ type OwnerChangeOptions struct {
 	TransferOpenActivities bool
 }
 
-func (h *OwnerChangeOptions) String() string {
-	return `<tns:OwnerChangeOptions><tns:transferAttachments>` +
-		strconv.FormatBool(h.TransferAttachments) +
-		`</tns:transferAttachments><tns:transferOpenActivities>` +
-		strconv.FormatBool(h.TransferOpenActivities) +
-		`<tns:transferOpenActivities></tns:OwnerChangeOptions>`
+func (h *OwnerChangeOptions) xe() *core.XE {
+	x := make([]XE, 0, 2)
+	x = append(x, XE{"tns:transferAttachments", strconv.FormatBool(h.TransferAttachments)})
+	x = append(x, XE{"tns:transferOpenActivities", strconv.FormatBool(h.TransferOpenActivities)})
+	return &core.XE{"tns:OwnerChangeOptions", x}
 }
 
 type QueryOptions struct {
 	BatchSize int
 }
 
-func (h *QueryOptions) String() string {
-	return `<tns:QueryOptions><tns:batchSize>` +
-		strconv.Itoa(h.BatchSize) +
-		`</tns:batchSize></tns:QueryOptions>`
+func (h *QueryOptions) xe() *core.XE {
+	return &core.XE{"tns:QueryOptions", XE{"tns:batchSize", strconv.Itoa(h.BatchSize)}}
 }
 
 type UserTerritoryDeleteHeader struct {
 	TransferToUserId string
 }
 
-func (h *UserTerritoryDeleteHeader) String() string {
-	return `<tns:UserTerritoryDeleteHeader><tns:batchSize>` +
-		h.TransferToUserId +
-		`</tns:batchSize></tns:UserTerritoryDeleteHeader>`
+func (h *UserTerritoryDeleteHeader) xe() *core.XE {
+	return &core.XE{"tns:UserTerritoryDeleteHeader", XE{"tns:transferToUserId", h.TransferToUserId}}
 }
