@@ -1,68 +1,60 @@
 package soap
 
 import (
-	//"encoding/xml"
 	"errors"
 	"fmt"
-	//"github.com/goforce/api/soap/core"
-	"github.com/goforce/api/commons"
-	//"io"
 	"math/big"
 	"strings"
 	"time"
 )
 
-// NewRecord returns new instance of record of provided type.
-// Optional errs provided to channel errors shortened syntax: r:=NewRecord(co.DescribeSObject(name))
-func (co *Connection) NewRecord(name string, values ...map[string]interface{}) (*Record, error) {
-	describe, err := co.DescribeSObject(name)
-	if err != nil {
-		return nil, err
-	}
-	r := Record{describe: describe, values: make(map[string]interface{})}
+type Record interface {
+	SObjectType() string
+	Get(field string) (interface{}, bool)
+	MustGet(field string) interface{}
+	Set(field string, value interface{}) (interface{}, error)
+	MustSet(field string, value interface{}) interface{}
+	Remove(field string) (interface{}, bool)
+	Fields() []string
+}
+
+const sobjecttype = "SObjectType"
+
+type Row map[string]interface{}
+
+func NewRow(sObjectType string) Row {
+	r := make(Row)
+	r[sobjecttype] = sObjectType
+	return r
+}
+
+func NewRecord(sObjectType string, values ...map[string]interface{}) Record {
+	r := NewRow(sObjectType)
 	for _, m := range values {
 		for k, v := range m {
-			_, err := r.Set(k, v)
-			if err != nil {
-				return nil, err
-			}
+			r[strings.ToLower(k)] = v
 		}
 	}
-	return &r, nil
+	return r
 }
 
-type Record struct {
-	describe *DescribeSObject
-	values   map[string]interface{}
+func (r Row) SObjectType() string {
+	return r[sobjecttype].(string)
 }
 
-func (r *Record) SObjectType() string {
-	return r.describe.describe.Name
-}
-
-func (r *Record) Get(name string) (interface{}, bool) {
-	var this, next string
-	if i := strings.IndexRune(name, '.'); i == -1 {
-		this = name
-		next = ""
-	} else {
-		this = name[:i]
-		next = name[i+1:]
-	}
-	this = strings.ToLower(this)
-	if v, ok := r.values[this]; ok {
-		if next == "" {
+func (r Row) Get(name string) (interface{}, bool) {
+	this, next := SplitOffFirstName(name)
+	if v, ok := r[this]; ok {
+		if v == nil || next == "" {
 			return v, true
-		} else if nested, ok := v.(commons.Record); ok {
+		} else if nested, ok := v.(Record); ok {
 			return nested.Get(next)
-		} else if v == nil {
-			return nil, true
 		}
 	}
 	return nil, false
 }
 
-func (r *Record) MustGet(name string) interface{} {
+func (r Row) MustGet(name string) interface{} {
 	v, ok := r.Get(name)
 	if !ok {
 		panic(fmt.Sprint("No such column '", name, "' on entity '", r.SObjectType(), "'"))
@@ -70,9 +62,71 @@ func (r *Record) MustGet(name string) interface{} {
 	return v
 }
 
-func (r *Record) Set(name string, value interface{}) (interface{}, error) {
-	// go lower and split off first name
-	var this, next string
+// Set value of the field name. Returns same value and error if value contains unsupported type.
+// Supported value types are: string, bool, *time.Time, *big.Rat, Record, *QueryResult.
+// int and float64 are converted to *big.Rat for convinience.
+// Set does not support setting values to nested subselects.
+func (r Row) Set(name string, value interface{}) (interface{}, error) {
+	this, next := SplitOffFirstName(name)
+	if next == "" {
+		// single, final name - just set value
+		// validate type of value
+		switch value.(type) {
+		case nil, string, bool, time.Time, *big.Rat, Record, *QueryResult:
+		case int:
+			value = big.NewRat(int64(value.(int)), 1)
+		case float64:
+			value = new(big.Rat).SetFloat64(value.(float64))
+		default:
+			return value, errors.New(fmt.Sprint("unsupported type of value for field: ", name, "=", value))
+		}
+		r[this] = value
+	} else {
+		// if nested name
+		if v, ok := r[this]; ok {
+			if nested, ok := v.(Record); ok {
+				return nested.Set(next, value)
+			}
+		}
+		return value, errors.New(fmt.Sprint("not a record:", this))
+	}
+	return value, nil
+}
+
+func (r Row) MustSet(name string, value interface{}) interface{} {
+	v, err := r.Set(name, value)
+	if err != nil {
+		panic(fmt.Sprint("Failed to set '", name, "' on entity '", r.SObjectType(), "' to '", value, "' : ", err))
+	}
+	return v
+}
+
+func (r Row) Remove(name string) (interface{}, bool) {
+	this, next := SplitOffFirstName(name)
+	if v, ok := r[this]; ok {
+		if next == "" {
+			delete(r, this)
+			return v, true
+		} else if nested, ok := v.(Record); ok {
+			return nested.Remove(next)
+		} else if v == nil {
+			return nil, true
+		}
+	}
+	return nil, false
+}
+
+func (r Row) Fields() []string {
+	fields := make([]string, 0, len(r)-1)
+	for k, _ := range r {
+		if k != sobjecttype {
+			fields = append(fields, k)
+		}
+	}
+	return fields
+}
+
+func SplitOffFirstName(name string) (this, next string) {
 	if i := strings.IndexRune(name, '.'); i == -1 {
 		this = name
 		next = ""
@@ -81,80 +135,5 @@ func (r *Record) Set(name string, value interface{}) (interface{}, error) {
 		next = name[i+1:]
 	}
 	this = strings.ToLower(this)
-	if next == "" {
-		// single, final name - just set value
-		// validate type of value
-		switch value.(type) {
-		case nil, string, bool, time.Time, *big.Rat, commons.Record, commons.QueryLocator:
-		default:
-			return value, errors.New(fmt.Sprint("unsupported type of value for field:", name))
-		}
-		if r.describe != nil {
-			if d, ok := r.describe.FieldByName(this); ok {
-				converted, err := d.FieldType().ValueOf(value)
-				if err != nil {
-					return nil, err
-				}
-				r.values[this] = converted
-			} else if d, ok := r.describe.FieldByRelationshipName(this); ok {
-				if value == nil {
-					r.values[this] = nil
-				} else if nr, ok := value.(commons.Record); ok {
-					so := strings.ToLower(nr.SObjectType())
-					for _, rn := range d.ReferenceTo() {
-						if so == strings.ToLower(rn) {
-							r.values[this] = value
-							return value, nil
-						}
-					}
-					return nil, errors.New(fmt.Sprint("Entity '", nr.SObjectType(), "' not referenced by '", d.Name(), "' allowed entity types: ", d.ReferenceTo()))
-				} else {
-					return nil, errors.New(fmt.Sprint("value of:", this, " should be record"))
-				}
-			} else if _, ok := r.describe.ChildRelationshipByName(this); ok {
-				if value == nil {
-					r.values[this] = &QueryLocator{isLast: true, records: make(commons.Recordset, 0, 0)}
-				} else if _, ok := value.(commons.QueryLocator); ok {
-					// TODO validate type of query locator allowed?
-					r.values[this] = value
-				} else {
-					return nil, errors.New(fmt.Sprint("value of:", this, " should be query locator", value))
-				}
-			} else {
-				return nil, errors.New(fmt.Sprint("No such column '", this, "' on entity '", r.SObjectType(), "'"))
-			}
-		} else {
-			r.values[this] = value
-		}
-	} else {
-		if nested, ok := r.values[this]; ok {
-			if t, ok := nested.(commons.Record); ok {
-				return t.Set(next, value)
-			} else {
-				return value, errors.New(fmt.Sprint("not a record found for:", this))
-			}
-		} else {
-			return value, errors.New(fmt.Sprint("no record found for:", this))
-		}
-	}
-	return value, nil
-}
-
-// Fields return list of names set for the Record. Names are same case as in Salesforce.
-func (r *Record) Fields() []string {
-	names := make([]string, 0, len(r.values))
-	for name, _ := range r.values {
-		if r.describe != nil {
-			if d, ok := r.describe.FieldByName(name); ok {
-				names = append(names, d.describe.Name)
-			} else if d, ok := r.describe.FieldByRelationshipName(name); ok {
-				names = append(names, d.describe.RelationshipName)
-			} else if d, ok := r.describe.ChildRelationshipByName(name); ok {
-				names = append(names, d.describe.RelationshipName)
-			}
-		} else {
-			names = append(names, name)
-		}
-	}
-	return names
+	return
 }

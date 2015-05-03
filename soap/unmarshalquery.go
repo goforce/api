@@ -2,69 +2,72 @@ package soap
 
 import (
 	"encoding/xml"
-	"fmt"
-	"github.com/goforce/api/commons"
-	"github.com/goforce/api/soap/core"
+	"errors"
+	"github.com/goforce/api/conv"
 	"io"
 	"strconv"
 	"strings"
 )
 
-const (
-	QUERY_SIZE = 1000
-)
-
-type recordDecoder struct {
-	ql     *QueryLocator
-	record *Record
+type xmlRecord struct {
+	r  Row
+	qr *QueryResult
 }
 
-func (ql *QueryLocator) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	for {
-		t, err := d.Token()
-		if err == io.EOF {
-			break
-		}
-		if se, ok := t.(xml.StartElement); ok && se.Name.Space == core.NS_PARTNER {
-			if se.Name.Local == "records" {
-				ql.records = ql.records.GrowIfFull()
-				rd := recordDecoder{ql, &Record{}}
-				ql.records = append(ql.records, rd.record)
-				d.DecodeElement(&rd, &se)
-			} else {
-				text, err := core.ParseTextElementComplete(d, se.Name)
-				if err != nil {
-					return err
-				}
-				switch se.Name.Local {
-				case "done":
-					ql.isLast = text == "true"
-				case "queryLocator":
-					ql.queryLocator = text
-				case "size":
-					ql.totalSize, _ = strconv.Atoi(text)
-				}
-			}
-		}
-	}
-	return nil
-}
-
-func (rd recordDecoder) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	rd.record.values = make(map[string]interface{})
-	if text, err := core.ParseTextElement(d, xml.Name{core.NS_OBJECT, "type"}); err == nil {
-		// AggregateResult is known type without describe.
-		if text != "AggregateResult" {
-			rd.record.describe, err = rd.ql.co.DescribeSObject(text)
-			if err != nil {
-				fmt.Println("failed to describe: ", text, " error returned:", err)
-				return err
-			}
-		}
-	} else {
+func (qr *QueryResult) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var (
+		s   string
+		err error
+	)
+	if s, err = ParseTextElement(d, xml.Name{NS_PARTNER, "done"}); err != nil {
 		return err
 	}
-	if _, err := core.ParseTextElement(d, xml.Name{core.NS_OBJECT, "Id"}); err != nil {
+	qr.Done = s == "true"
+	if qr.QueryLocator, err = ParseTextElement(d, xml.Name{NS_PARTNER, "queryLocator"}); err != nil {
+		return err
+	}
+	for {
+		t, err := d.Token()
+		if err != nil {
+			return err
+		}
+		if se, ok := t.(xml.StartElement); ok && se.Name.Space == NS_PARTNER && se.Name.Local == "records" {
+			x := xmlRecord{qr: qr}
+			err := d.DecodeElement(&x, &se)
+			if err != nil {
+				return err
+			}
+			qr.Append(x.r)
+		} else {
+			break
+		}
+	}
+	if s, err = ParseTextElementComplete(d, xml.Name{NS_PARTNER, "size"}); err != nil {
+		return err
+	}
+	qr.Size, err = strconv.Atoi(s)
+	// skip till EOF
+	for ; err == nil; _, err = d.Token() {
+	}
+	if err == io.EOF {
+		return nil
+	}
+	return err
+}
+
+var nameXsiType xml.Name = xml.Name{NS_XSI, "type"}
+var nameXsiNil xml.Name = xml.Name{NS_XSI, "nil"}
+
+func (x *xmlRecord) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var (
+		s   string
+		err error
+	)
+	if s, err = ParseTextElement(d, xml.Name{NS_OBJECT, "type"}); err != nil {
+		return err
+	}
+	x.r = NewRow(s)
+	if _, err = ParseTextElement(d, xml.Name{NS_OBJECT, "Id"}); err != nil {
 		return err
 	}
 	for {
@@ -76,61 +79,49 @@ func (rd recordDecoder) UnmarshalXML(d *xml.Decoder, start xml.StartElement) err
 			xsitype := ""
 			xsinil := false
 			for _, attr := range se.Attr {
-				if attr.Name == core.NameXsiType {
+				if attr.Name == nameXsiType {
 					xsitype = attr.Value
-				} else if attr.Name == core.NameXsiNil {
+				} else if attr.Name == nameXsiNil {
 					xsinil = attr.Value == "true"
 				}
 			}
 			name := strings.ToLower(se.Name.Local)
 			if xsinil {
-				rd.record.values[name] = nil
+				x.r[name] = nil
 			} else {
 				switch xsitype {
 				case "QueryResult":
-					ql := QueryLocator{co: rd.ql.co, headers: rd.ql.headers}
-					if err := d.DecodeElement(&ql, &se); err != nil {
+					q := &QueryResult{sObjectTypes: x.qr.sObjectTypes}
+					if err := d.DecodeElement(q, &se); err != nil {
 						return err
 					}
-					rd.record.values[name] = &ql
+					x.r[name] = q
 				case "sf:sObject":
-					nested := recordDecoder{ql: rd.ql, record: &Record{}}
-					if err := d.DecodeElement(&nested, &se); err != nil {
+					nx := xmlRecord{qr: x.qr}
+					if err := d.DecodeElement(&nx, &se); err != nil {
 						return err
 					}
-					rd.record.values[name] = nested.record
+					x.r[name] = nx.r
 				case "location":
 					d.Skip()
 				case "address":
 					d.Skip()
 				default:
-					text, err := core.ParseTextElementComplete(d, se.Name)
+					text, err := ParseTextElementComplete(d, se.Name)
 					if err != nil {
 						return err
 					}
 					switch xsitype {
 					case "xsd:int", "xsd:double":
-						rd.record.values[name], err = commons.NUMBER.Parse(text)
+						x.r[name], err = conv.NUMBER.Parse(text)
 					case "xsd:dateTime":
-						rd.record.values[name], err = commons.DATETIME.Parse(text)
+						x.r[name], err = conv.DATETIME.Parse(text)
 					case "xsd:date":
-						rd.record.values[name], err = commons.DATE.Parse(text)
+						x.r[name], err = conv.DATE.Parse(text)
 					case "xsd:time":
-						rd.record.values[name], err = commons.TIME.Parse(text)
+						x.r[name], err = conv.TIME.Parse(text)
 					default:
-						if rd.record.describe != nil {
-							if d, ok := rd.record.describe.FieldByName(name); ok {
-								v, err := d.FieldType().Parse(text)
-								if err != nil {
-									return err
-								}
-								rd.record.values[name] = v
-							} else {
-								rd.record.values[name] = text
-							}
-						} else {
-							rd.record.values[name] = text
-						}
+						x.r[name] = text
 					}
 					if err != nil {
 						return err
@@ -139,5 +130,38 @@ func (rd recordDecoder) UnmarshalXML(d *xml.Decoder, start xml.StartElement) err
 			}
 		}
 	}
+	x.qr.sObjectTypes[x.r.SObjectType()] = struct{}{}
 	return nil
+}
+
+func ParseTextElement(d *xml.Decoder, ele xml.Name) (string, error) {
+	t, err := d.Token()
+	if v, ok := t.(xml.StartElement); err != nil || !ok || v.End().Name != ele {
+		return "", xmlError(ele.Local)
+	}
+	return ParseTextElementComplete(d, ele)
+}
+
+func ParseTextElementComplete(d *xml.Decoder, ele xml.Name) (string, error) {
+	t, err := d.Token()
+	if err != nil {
+		return "", xmlError(ele.Local)
+	}
+	if v, ok := t.(xml.EndElement); ok && v.Name == ele {
+		return "", nil
+	}
+	re, ok := t.(xml.CharData)
+	if !ok {
+		return "", xmlError(ele.Local)
+	}
+	re = re.Copy()
+	t, err = d.Token()
+	if v, ok := t.(xml.EndElement); err != nil || !ok || v.Name != ele {
+		return "", xmlError(ele.Local)
+	}
+	return string(re), nil
+}
+
+func xmlError(name string) error {
+	return errors.New("unexpected error parsing xml at " + name)
 }
