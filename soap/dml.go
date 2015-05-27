@@ -56,7 +56,7 @@ func Insert(co Connection, records []Record, headers ...*XE) ([]DmlResult, error
 	var result struct {
 		DmlResults []DmlResult `xml:"Body>createResponse>result"`
 	}
-	err := Post(co.Server(), req.Bytes(), &result, append(headers, &XE{"tns:SessionHeader", XE{"tns:sessionId", co.Token()}})...)
+	err := Post(co.GetServerUrl(), req.Bytes(), &result, append(headers, &XE{"tns:SessionHeader", XE{"tns:sessionId", co.GetToken()}})...)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func Update(co Connection, records []Record, headers ...*XE) ([]DmlResult, error
 	var result struct {
 		DmlResults []DmlResult `xml:"Body>updateResponse>result"`
 	}
-	err := Post(co.Server(), req.Bytes(), &result, append(headers, &XE{"tns:SessionHeader", XE{"tns:sessionId", co.Token()}})...)
+	err := Post(co.GetServerUrl(), req.Bytes(), &result, append(headers, &XE{"tns:SessionHeader", XE{"tns:sessionId", co.GetToken()}})...)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +140,7 @@ func Upsert(co Connection, records []Record, externalId string, headers ...*XE) 
 	var result struct {
 		DmlResults []DmlResult `xml:"Body>upsertResponse>result"`
 	}
-	err := Post(co.Server(), req.Bytes(), &result, append(headers, &XE{"tns:SessionHeader", XE{"tns:sessionId", co.Token()}})...)
+	err := Post(co.GetServerUrl(), req.Bytes(), &result, append(headers, &XE{"tns:SessionHeader", XE{"tns:sessionId", co.GetToken()}})...)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +169,7 @@ func Delete(co Connection, records []Record, headers ...*XE) ([]DmlResult, error
 	var result struct {
 		DmlResults []DmlResult `xml:"Body>deleteResponse>result"`
 	}
-	err := Post(co.Server(), req.Bytes(), &result, append(headers, &XE{"tns:SessionHeader", XE{"tns:sessionId", co.Token()}})...)
+	err := Post(co.GetServerUrl(), req.Bytes(), &result, append(headers, &XE{"tns:SessionHeader", XE{"tns:sessionId", co.GetToken()}})...)
 	if err != nil {
 		return nil, err
 	}

@@ -19,11 +19,11 @@ func (qr *QueryResult) UnmarshalXML(d *xml.Decoder, start xml.StartElement) erro
 		s   string
 		err error
 	)
-	if s, err = ParseTextElement(d, xml.Name{NS_PARTNER, "done"}); err != nil {
+	if s, err = parseTextElement(d, xml.Name{NS_PARTNER, "done"}); err != nil {
 		return err
 	}
 	qr.Done = s == "true"
-	if qr.QueryLocator, err = ParseTextElement(d, xml.Name{NS_PARTNER, "queryLocator"}); err != nil {
+	if qr.QueryLocator, err = parseTextElement(d, xml.Name{NS_PARTNER, "queryLocator"}); err != nil {
 		return err
 	}
 	for {
@@ -42,7 +42,7 @@ func (qr *QueryResult) UnmarshalXML(d *xml.Decoder, start xml.StartElement) erro
 			break
 		}
 	}
-	if s, err = ParseTextElementComplete(d, xml.Name{NS_PARTNER, "size"}); err != nil {
+	if s, err = parseTextElementComplete(d, xml.Name{NS_PARTNER, "size"}); err != nil {
 		return err
 	}
 	qr.Size, err = strconv.Atoi(s)
@@ -63,11 +63,11 @@ func (x *xmlRecord) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		s   string
 		err error
 	)
-	if s, err = ParseTextElement(d, xml.Name{NS_OBJECT, "type"}); err != nil {
+	if s, err = parseTextElement(d, xml.Name{NS_OBJECT, "type"}); err != nil {
 		return err
 	}
 	x.r = NewRow(s)
-	if _, err = ParseTextElement(d, xml.Name{NS_OBJECT, "Id"}); err != nil {
+	if _, err = parseTextElement(d, xml.Name{NS_OBJECT, "Id"}); err != nil {
 		return err
 	}
 	for {
@@ -107,7 +107,7 @@ func (x *xmlRecord) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 				case "address":
 					d.Skip()
 				default:
-					text, err := ParseTextElementComplete(d, se.Name)
+					text, err := parseTextElementComplete(d, se.Name)
 					if err != nil {
 						return err
 					}
@@ -134,15 +134,15 @@ func (x *xmlRecord) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	return nil
 }
 
-func ParseTextElement(d *xml.Decoder, ele xml.Name) (string, error) {
+func parseTextElement(d *xml.Decoder, ele xml.Name) (string, error) {
 	t, err := d.Token()
 	if v, ok := t.(xml.StartElement); err != nil || !ok || v.End().Name != ele {
 		return "", xmlError(ele.Local)
 	}
-	return ParseTextElementComplete(d, ele)
+	return parseTextElementComplete(d, ele)
 }
 
-func ParseTextElementComplete(d *xml.Decoder, ele xml.Name) (string, error) {
+func parseTextElementComplete(d *xml.Decoder, ele xml.Name) (string, error) {
 	t, err := d.Token()
 	if err != nil {
 		return "", xmlError(ele.Local)

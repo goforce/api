@@ -39,7 +39,7 @@ func DescribeSObjects(co Connection, names []string) ([]*DescribeSObjectResult, 
 
 type DescribeSObjectResult struct {
 	ActionOverrides     []*ActionOverride    `xml:"actionOverrides"`
-	Activateable        bool                `xml:"activateable"`
+	Activateable        bool                 `xml:"activateable"`
 	ChildRelationships  []*ChildRelationship `xml:"childRelationships"`
 	CompactLayoutable   bool                 `xml:"compactLayoutable"`
 	Createable          bool                 `xml:"createable"`
